@@ -12,7 +12,6 @@ function App() {
     addListeners(browser);
 
     function addListeners(target) {
-      console.log("🚀 ~ addListeners ~ target:", target)
       target.addEventListener("keydown", onKeydown);
       target.addEventListener("keyup", removeHotkeyOverlays);
       target.addEventListener("blur", removeHotkeyOverlays);
@@ -23,7 +22,7 @@ function App() {
   return (
     <>
       <div>
-        
+
         <button onClick={() => console.log("🚀 ~ onClick ~ clicked")} data-hotkey="x">welcome to yemen</button>
       </div>
     </>

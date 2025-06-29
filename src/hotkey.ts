@@ -1,5 +1,33 @@
 import { getVisibleElements, isMacOS } from "./service/utils";
+/**
+ * Defines the context for a hotkey callback.
+ */
+interface HotkeyCallbackContext {
+    area: HTMLElement;
+    target: EventTarget;
+}
+export type HotkeyCallback = (context: HotkeyCallbackContext) => void;
+export interface HotkeyOptions {
+    allowRepeat?: boolean;
+    bypassEditableProtection?: boolean;
+    global?: boolean;
+    area?: () => HTMLElement;
+    isAvailable?: () => boolean;
+}
 
+
+interface HotkeyRegistration extends HotkeyOptions {
+    hotkey: string;
+    callback: HotkeyCallback;
+    activeElement: HTMLElement | null;
+}
+interface DispatchInfos {
+    activeElement: HTMLElement;
+    hotkey: string;
+    isRepeated: boolean;
+    target: EventTarget;
+    shouldProtectEditable: boolean;
+}
 const ALPHANUM_KEYS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
 const NAV_KEYS = [
     "arrowleft",
@@ -18,14 +46,15 @@ const NAV_KEYS = [
 ];
 const MODIFIERS = ["alt", "control", "shift"];
 const AUTHORIZED_KEYS = [...ALPHANUM_KEYS, ...NAV_KEYS, "escape"];
-const registrations = new Map();
+const registrations = new Map<number, HotkeyRegistration>();
 const overlayModifier = "alt"
 let nextToken = 0;
 let activeElems = [document];
 let overlaysVisible = false;
 
 const activeElement = activeElems[activeElems.length - 1];
-function getActiveHotkey(ev) {
+
+function getActiveHotkey(ev: KeyboardEvent): string {
     if (!ev.key) {
         // Chrome may trigger incomplete keydown events under certain circumstances.
         // E.g. when using browser built-in autocomplete on an input.
@@ -73,8 +102,8 @@ function getActiveHotkey(ev) {
 
     return hotkey.join("+");
 }
+export function onKeydown(event: KeyboardEvent) {
 
-export function onKeydown(event) {
 
     if (event.code && event.code.indexOf("Numpad") === 0 && /^\d$/.test(event.key)) {
         // Ignore all number keys from the Keypad because of a certain input method
@@ -88,12 +117,6 @@ export function onKeydown(event) {
         return;
     }
     const activeElement = activeElems[activeElems.length - 1];
-
-
-    // Do not dispatch if UI is blocked
-    // if (isBlocked) {
-    //   return;
-    // }
 
     // Replace all [accesskey] attrs by [data-hotkey] on all elements.
     // This is needed to take over on the default accesskey behavior
@@ -115,6 +138,7 @@ export function onKeydown(event) {
 
     // Is the pressed key NOT whitelisted ?
     const singleKey = hotkey.split("+").pop();
+    console.log("🚀 ~ onKeydown ~ singleKey:", typeof (singleKey))
     if (!AUTHORIZED_KEYS.includes(singleKey)) {
         return;
     }
@@ -151,7 +175,73 @@ export function onKeydown(event) {
         event.preventDefault();
     }
 }
-function addHotkeyOverlays(activeElement) {
+function dispatch(infos: DispatchInfos): boolean {
+    const { activeElement, hotkey, isRepeated, target, shouldProtectEditable } = infos;
+
+    // Prepare registrations and the common filter
+    const reversedRegistrations = Array.from(registrations.values()).reverse();
+    const domRegistrations = getDomRegistrations(hotkey, activeElement);
+    const allRegistrations = reversedRegistrations.concat(domRegistrations);
+
+    // Find all candidates
+    const candidates = allRegistrations.filter(
+        (reg) =>
+            reg.hotkey === hotkey &&
+            (reg.allowRepeat || !isRepeated) &&
+            (reg.bypassEditableProtection || !shouldProtectEditable) &&
+            (reg.global || reg.activeElement === activeElement) &&
+            (!reg.isAvailable || reg.isAvailable()) &&
+            (!reg.area ||
+                (target instanceof Node && reg.area() && reg.area().contains(target)))
+    );
+
+    // First candidate
+    let winner = candidates.shift();
+    if (winner && winner.area) {
+        // If there is an area, find the closest one
+        for (const candidate of candidates.filter((c) => Boolean(c.area))) {
+            if (candidate.area() && winner.area().contains(candidate.area())) {
+                winner = candidate;
+            }
+        }
+    }
+
+    // Dispatch actual hotkey to the matching registration
+    if (winner) {
+        winner.callback({
+            area: winner.area && winner.area(),
+            target,
+        });
+        return true;
+    }
+    return false;
+}
+function getDomRegistrations(hotkey: string, activeElement: HTMLElement): HotkeyRegistration[] {
+    const overlayModParts = overlayModifier.split("+");
+    if (!overlayModParts.every((el) => hotkey.includes(el))) {
+        return [];
+    }
+
+    // Get all elements having a data-hotkey attribute  and matching
+    // the actual hotkey without the overlayModifier.
+    const cleanHotkey = hotkey
+        .split("+")
+        .filter((key) => !overlayModParts.includes(key))
+        .join("+");
+    const elems = getVisibleElements(activeElement, `[data-hotkey='${cleanHotkey}' i]`);
+    return elems.map((el) => ({
+        hotkey,
+        activeElement,
+        bypassEditableProtection: true,
+        callback: () => {
+            if (document.activeElement) {
+                document.activeElement.blur();
+            }
+            setTimeout(() => el.click());
+        },
+    }));
+}
+function addHotkeyOverlays(activeElement: HTMLElement) {
 
     for (const el of getVisibleElements(activeElement, "[data-hotkey]:not(:disabled)")) {
         const hotkey = el.dataset.hotkey;
@@ -198,73 +288,8 @@ export function removeHotkeyOverlays() {
     }
     overlaysVisible = false;
 }
-function dispatch(infos) {
-    const { activeElement, hotkey, isRepeated, target, shouldProtectEditable } = infos;
 
-    // Prepare registrations and the common filter
-    const reversedRegistrations = Array.from(registrations.values()).reverse();
-    const domRegistrations = getDomRegistrations(hotkey, activeElement);
-    const allRegistrations = reversedRegistrations.concat(domRegistrations);
-
-    // Find all candidates
-    const candidates = allRegistrations.filter(
-        (reg) =>
-            reg.hotkey === hotkey &&
-            (reg.allowRepeat || !isRepeated) &&
-            (reg.bypassEditableProtection || !shouldProtectEditable) &&
-            (reg.global || reg.activeElement === activeElement) &&
-            (!reg.isAvailable || reg.isAvailable()) &&
-            (!reg.area ||
-                (target instanceof Node && reg.area() && reg.area().contains(target)))
-    );
-
-    // First candidate
-    let winner = candidates.shift();
-    if (winner && winner.area) {
-        // If there is an area, find the closest one
-        for (const candidate of candidates.filter((c) => Boolean(c.area))) {
-            if (candidate.area() && winner.area().contains(candidate.area())) {
-                winner = candidate;
-            }
-        }
-    }
-
-    // Dispatch actual hotkey to the matching registration
-    if (winner) {
-        winner.callback({
-            area: winner.area && winner.area(),
-            target,
-        });
-        return true;
-    }
-    return false;
-}
-function getDomRegistrations(hotkey, activeElement) {
-    const overlayModParts = overlayModifier.split("+");
-    if (!overlayModParts.every((el) => hotkey.includes(el))) {
-        return [];
-    }
-
-    // Get all elements having a data-hotkey attribute  and matching
-    // the actual hotkey without the overlayModifier.
-    const cleanHotkey = hotkey
-        .split("+")
-        .filter((key) => !overlayModParts.includes(key))
-        .join("+");
-    const elems = getVisibleElements(activeElement, `[data-hotkey='${cleanHotkey}' i]`);
-    return elems.map((el) => ({
-        hotkey,
-        activeElement,
-        bypassEditableProtection: true,
-        callback: () => {
-            if (document.activeElement) {
-                document.activeElement.blur();
-            }
-            setTimeout(() => el.click());
-        },
-    }));
-}
-function registerHotkey(hotkey, callback, options = {}) {
+function registerHotkey(hotkey: string, callback: HotkeyCallback, options: HotkeyOptions = {}): number {
     // Validate some informations
     if (!hotkey || hotkey.length === 0) {
         throw new Error("You must specify an hotkey when registering a registration.");
@@ -300,8 +325,8 @@ function registerHotkey(hotkey, callback, options = {}) {
 
     // Add registration
     const token = nextToken++;
-    /** @type {HotkeyRegistration} */
-    const registration = {
+    // /** @type {HotkeyRegistration} */
+    const registration: HotkeyRegistration = {
         hotkey: hotkey.toLowerCase(),
         callback,
         activeElement: null,
@@ -321,11 +346,11 @@ function registerHotkey(hotkey, callback, options = {}) {
     registrations.set(token, registration);
     return token;
 }
-function unregisterHotkey(token) {
+function unregisterHotkey(token: number) {
     registrations.delete(token);
 }
 
-export function add(hotkey, callback, options = {}) {
+export function add(hotkey: string, callback: HotkeyCallback, options?: HotkeyOptions) {
     const token = registerHotkey(hotkey, callback, options);
     return () => {
         unregisterHotkey(token);

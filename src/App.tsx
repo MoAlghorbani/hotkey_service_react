@@ -7,16 +7,19 @@ import { useHotkey } from './hotkey_hook';
 function App() {
 
   useHotkey("x", () => console.log('MEWWWWWWWW'), { allowRepeat: true });
+  function addListeners(target) {
+    console.log("🚀 ~ addListeners ~ target:", typeof (target))
+    console.log("🚀 ~ addListeners ~ target:", target)
+    target.addEventListener("keydown", onKeydown);
+    target.addEventListener("keyup", removeHotkeyOverlays);
+    target.addEventListener("blur", removeHotkeyOverlays);
+    target.addEventListener("click", removeHotkeyOverlays);
+  }
   useEffect(() => {
 
     addListeners(browser);
 
-    function addListeners(target) {
-      target.addEventListener("keydown", onKeydown);
-      target.addEventListener("keyup", removeHotkeyOverlays);
-      target.addEventListener("blur", removeHotkeyOverlays);
-      target.addEventListener("click", removeHotkeyOverlays);
-    }
+
   }, [])
 
   return (

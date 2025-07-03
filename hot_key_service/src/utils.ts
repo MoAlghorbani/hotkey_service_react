@@ -1,57 +1,54 @@
-// Direct window access instead of browser abstraction
 /**
- * rough approximation of a visible element. not perfect (does not take into
- * account opacity = 0 for example), but good enough for our purpose
- *
- * @param {Element} el - Element, Document, Window or null to check visibility
- * @returns {boolean} - Whether the element is visible
+ * Checks if an element is visible in the DOM
+ * 
+ * @param el - Element, Document, Window or null to check visibility
+ * @returns Whether the element is visible
  */
-export function isVisible(el: Element | Window | Document): boolean {
-    if (el === document || el === window) {
-        return true;
+export function isVisible(el: Element | Window | Document | null): boolean {
+    // Handle special cases
+    if (!el) return false;
+    if (el === document || el === window) return true;
+    
+    // Now we know it's an Element
+    const element = el as Element;
+    
+    // Check dimensions using the most appropriate method
+    if ('offsetWidth' in element && 'offsetHeight' in element) {
+        const htmlEl = element as HTMLElement;
+        if (htmlEl.offsetWidth > 0 && htmlEl.offsetHeight > 0) return true;
+    } else if ('getBoundingClientRect' in element) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) return true;
     }
-    if (!el) {
-        return false;
+    
+    // Check for elements with display: contents
+    if (getComputedStyle(element).display === 'contents') {
+        return Array.from(element.children).some(child => isVisible(child));
     }
-    let _isVisible = false;
-    if ("offsetWidth" in el && "offsetHeight" in el) {
-        // Use type assertion to tell TypeScript this is an HTMLElement
-        const htmlEl = el as HTMLElement;
-        _isVisible = htmlEl.offsetWidth > 0 && htmlEl.offsetHeight > 0;
-    } else if ("getBoundingClientRect" in el) {
-        // for example, svgelements
-        // Element interface has getBoundingClientRect
-        const rect = (el as Element).getBoundingClientRect();
-        _isVisible = rect.width > 0 && rect.height > 0;
-    }
-    if (!_isVisible && "nodeType" in el && getComputedStyle(el as Element).display === "contents") {
-        // Only Element has children property
-        const elemEl = el as Element;
-        for (const child of elemEl.children) {
-            if (isVisible(child)) {
-                return true;
-            }
-        }
-    }
-    return _isVisible;
+    
+    return false;
 }
 
 /**
- * @param {Element} activeElement
- * @param {String} selector
- * @returns all selected and visible elements present in the activeElement
+ * Returns all visible elements matching a selector within a parent element
+ * 
+ * @param activeElement - Parent element to search within
+ * @param selector - CSS selector to match elements
+ * @returns Array of visible elements matching the selector
  */
-export function getVisibleElements(activeElement:Element, selector:string) {
-    const visibleElements = [];
-    /** @type {NodeListOf<HTMLElement>} */
-    const elements = activeElement.querySelectorAll(selector);
-    for (const el of elements) {
-        if (isVisible(el)) {
-            visibleElements.push(el);
-        }
-    }
-    return visibleElements;
+export function getVisibleElements(activeElement: Element, selector: string): HTMLElement[] {
+    return Array.from(activeElement.querySelectorAll<HTMLElement>(selector))
+        .filter(isVisible);
 }
-export function isMacOS() {
-    return /Mac/i.test(window.navigator.userAgent);
+
+// Cache the platform detection result
+const IS_MAC_OS = typeof window !== 'undefined' ? /Mac/i.test(window.navigator.userAgent) : false;
+
+/**
+ * Detects if the current platform is macOS
+ * 
+ * @returns True if the current platform is macOS
+ */
+export function isMacOS(): boolean {
+    return IS_MAC_OS;
 }

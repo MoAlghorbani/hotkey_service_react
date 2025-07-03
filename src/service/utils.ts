@@ -6,7 +6,7 @@ import { browser } from "./browser";
  * @param {Element} el
  * @returns {boolean}
  */
-export function isVisible(el: Element): boolean {
+export function isVisible(el) {
     if (el === document || el === window) {
         return true;
     }
@@ -36,7 +36,7 @@ export function isVisible(el: Element): boolean {
  * @param {String} selector
  * @returns all selected and visible elements present in the activeElement
  */
-export function getVisibleElements(activeElement: Element, selector: string):unknown {
+export function getVisibleElements(activeElement, selector) {
     const visibleElements = [];
     /** @type {NodeListOf<HTMLElement>} */
     const elements = activeElement.querySelectorAll(selector);

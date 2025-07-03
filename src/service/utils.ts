@@ -1,12 +1,12 @@
-import { browser } from "./browser";
+// Direct window access instead of browser abstraction
 /**
  * rough approximation of a visible element. not perfect (does not take into
  * account opacity = 0 for example), but good enough for our purpose
  *
- * @param {Element} el
- * @returns {boolean}
+ * @param {Element} el - Element, Document, Window or null to check visibility
+ * @returns {boolean} - Whether the element is visible
  */
-export function isVisible(el) {
+export function isVisible(el: Element | Window | Document): boolean {
     if (el === document || el === window) {
         return true;
     }
@@ -15,14 +15,19 @@ export function isVisible(el) {
     }
     let _isVisible = false;
     if ("offsetWidth" in el && "offsetHeight" in el) {
-        _isVisible = el.offsetWidth > 0 && el.offsetHeight > 0;
+        // Use type assertion to tell TypeScript this is an HTMLElement
+        const htmlEl = el as HTMLElement;
+        _isVisible = htmlEl.offsetWidth > 0 && htmlEl.offsetHeight > 0;
     } else if ("getBoundingClientRect" in el) {
         // for example, svgelements
-        const rect = el.getBoundingClientRect();
+        // Element interface has getBoundingClientRect
+        const rect = (el as Element).getBoundingClientRect();
         _isVisible = rect.width > 0 && rect.height > 0;
     }
-    if (!_isVisible && getComputedStyle(el).display === "contents") {
-        for (const child of el.children) {
+    if (!_isVisible && "nodeType" in el && getComputedStyle(el as Element).display === "contents") {
+        // Only Element has children property
+        const elemEl = el as Element;
+        for (const child of elemEl.children) {
             if (isVisible(child)) {
                 return true;
             }
@@ -36,7 +41,7 @@ export function isVisible(el) {
  * @param {String} selector
  * @returns all selected and visible elements present in the activeElement
  */
-export function getVisibleElements(activeElement, selector) {
+export function getVisibleElements(activeElement:Element, selector:string) {
     const visibleElements = [];
     /** @type {NodeListOf<HTMLElement>} */
     const elements = activeElement.querySelectorAll(selector);
@@ -48,5 +53,5 @@ export function getVisibleElements(activeElement, selector) {
     return visibleElements;
 }
 export function isMacOS() {
-    return /Mac/i.test(browser.navigator.userAgent);
+    return /Mac/i.test(window.navigator.userAgent);
 }

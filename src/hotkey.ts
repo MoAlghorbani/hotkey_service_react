@@ -4,7 +4,7 @@ import { getVisibleElements, isMacOS } from "./service/utils";
  */
 interface HotkeyCallbackContext {
     area: HTMLElement;
-    target: EventTarget;
+    target: EventTarget | null;
 }
 export type HotkeyCallback = (context: HotkeyCallbackContext) => void;
 export interface HotkeyOptions {
@@ -15,19 +15,19 @@ export interface HotkeyOptions {
     isAvailable?: () => boolean;
 }
 
-
 interface HotkeyRegistration extends HotkeyOptions {
     hotkey: string;
     callback: HotkeyCallback;
     activeElement: HTMLElement | null;
 }
 interface DispatchInfos {
-    activeElement: HTMLElement;
+    activeElement: HTMLElement | Document;
     hotkey: string;
     isRepeated: boolean;
-    target: EventTarget;
+    target: EventTarget | null;
     shouldProtectEditable: boolean;
 }
+
 const ALPHANUM_KEYS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
 const NAV_KEYS = [
     "arrowleft",
@@ -49,11 +49,10 @@ const AUTHORIZED_KEYS = [...ALPHANUM_KEYS, ...NAV_KEYS, "escape"];
 const registrations = new Map<number, HotkeyRegistration>();
 const overlayModifier = "alt"
 let nextToken = 0;
-let activeElems = [document];
+let activeElems: (HTMLElement | Document)[] = [document];
 let overlaysVisible = false;
 
 const activeElement = activeElems[activeElems.length - 1];
-
 function getActiveHotkey(ev: KeyboardEvent): string {
     if (!ev.key) {
         // Chrome may trigger incomplete keydown events under certain circumstances.
@@ -104,7 +103,6 @@ function getActiveHotkey(ev: KeyboardEvent): string {
 }
 export function onKeydown(event: KeyboardEvent) {
 
-
     if (event.code && event.code.indexOf("Numpad") === 0 && /^\d$/.test(event.key)) {
         // Ignore all number keys from the Keypad because of a certain input method
         // of (advance-)ASCII characters on Windows OS: ALT+[numerical code from keypad]
@@ -124,7 +122,9 @@ export function onKeydown(event: KeyboardEvent) {
     const elementsWithAccessKey = document.querySelectorAll("[accesskey]");
     for (const el of elementsWithAccessKey) {
         if (el instanceof HTMLElement) {
-            el.dataset.hotkey = el.accessKey;
+            // accessKey is always a string, but TypeScript might see it as possibly undefined
+            const accessKey = el.accessKey || '';
+            el.dataset.hotkey = accessKey;
             el.removeAttribute("accesskey");
         }
     }
@@ -137,8 +137,7 @@ export function onKeydown(event: KeyboardEvent) {
     }
 
     // Is the pressed key NOT whitelisted ?
-    const singleKey = hotkey.split("+").pop();
-    console.log("🚀 ~ onKeydown ~ singleKey:", typeof (singleKey))
+    const singleKey = hotkey.split("+").pop() || '';
     if (!AUTHORIZED_KEYS.includes(singleKey)) {
         return;
     }
@@ -160,7 +159,12 @@ export function onKeydown(event: KeyboardEvent) {
         target: event.target,
         shouldProtectEditable,
     };
-    const dispatched = dispatch(infos);
+    // Type assertion needed because activeElement might be Document
+    const typedInfos: DispatchInfos = {
+        ...infos,
+        activeElement: infos.activeElement instanceof HTMLElement ? infos.activeElement : document.body
+    };
+    const dispatched = dispatch(typedInfos);
     if (dispatched) {
         // Only if event has been handled.
         // Purpose: prevent browser defaults
@@ -192,7 +196,7 @@ function dispatch(infos: DispatchInfos): boolean {
             (reg.global || reg.activeElement === activeElement) &&
             (!reg.isAvailable || reg.isAvailable()) &&
             (!reg.area ||
-                (target instanceof Node && reg.area() && reg.area().contains(target)))
+                (target instanceof Node && reg.area && reg.area().contains(target)))
     );
 
     // First candidate
@@ -200,7 +204,9 @@ function dispatch(infos: DispatchInfos): boolean {
     if (winner && winner.area) {
         // If there is an area, find the closest one
         for (const candidate of candidates.filter((c) => Boolean(c.area))) {
-            if (candidate.area() && winner.area().contains(candidate.area())) {
+            const candidateArea = candidate.area ? candidate.area() : null;
+            const winnerArea = winner.area ? winner.area() : null;
+            if (candidateArea && winnerArea && winnerArea.contains(candidateArea)) {
                 winner = candidate;
             }
         }
@@ -209,14 +215,15 @@ function dispatch(infos: DispatchInfos): boolean {
     // Dispatch actual hotkey to the matching registration
     if (winner) {
         winner.callback({
-            area: winner.area && winner.area(),
+            area: winner.area ? winner.area() : document.body,
             target,
         });
         return true;
     }
     return false;
 }
-function getDomRegistrations(hotkey: string, activeElement: HTMLElement): HotkeyRegistration[] {
+// Helper function to get DOM registrations
+function getDomRegistrations(hotkey: string, activeElement: HTMLElement | Document): HotkeyRegistration[] {
     const overlayModParts = overlayModifier.split("+");
     if (!overlayModParts.every((el) => hotkey.includes(el))) {
         return [];
@@ -228,23 +235,38 @@ function getDomRegistrations(hotkey: string, activeElement: HTMLElement): Hotkey
         .split("+")
         .filter((key) => !overlayModParts.includes(key))
         .join("+");
-    const elems = getVisibleElements(activeElement, `[data-hotkey='${cleanHotkey}' i]`);
+    
+    // We need to ensure we're passing an Element to getVisibleElements
+    const elementForSearch = activeElement instanceof Document ? document.body : activeElement;
+    
+    // Cast to HTMLElement[] since we know these elements will have click method
+    const elems = getVisibleElements(elementForSearch, `[data-hotkey='${cleanHotkey}' i]`) as HTMLElement[];
+    
     return elems.map((el) => ({
         hotkey,
-        activeElement,
+        // Ensure activeElement is HTMLElement or null for HotkeyRegistration
+        activeElement: activeElement instanceof HTMLElement ? activeElement : null,
         bypassEditableProtection: true,
         callback: () => {
-            if (document.activeElement) {
+            if (document.activeElement && document.activeElement instanceof HTMLElement) {
                 document.activeElement.blur();
             }
-            setTimeout(() => el.click());
+            setTimeout(() => {
+                if ('click' in el) {
+                    el.click();
+                }
+            });
         },
     }));
 }
-function addHotkeyOverlays(activeElement: HTMLElement) {
-
-    for (const el of getVisibleElements(activeElement, "[data-hotkey]:not(:disabled)")) {
-        const hotkey = el.dataset.hotkey;
+function addHotkeyOverlays(activeElement: HTMLElement | Document) {
+    // We need to ensure we're passing an Element to getVisibleElements
+    const elementForSearch = activeElement instanceof Document ? document.body : activeElement;
+    
+    // Cast to HTMLElement[] since we know these elements will have dataset property
+    const visibleElements = getVisibleElements(elementForSearch, "[data-hotkey]:not(:disabled)") as HTMLElement[];
+    for (const el of visibleElements) {
+        const hotkey = el.dataset.hotkey || '';
         const overlay = document.createElement("div");
         overlay.classList.add(
             "o_web_hotkey_overlay",
@@ -265,7 +287,7 @@ function addHotkeyOverlays(activeElement: HTMLElement) {
         overlayKbd.appendChild(document.createTextNode(hotkey.toUpperCase()));
         overlay.appendChild(overlayKbd);
 
-        let overlayParent;
+        let overlayParent: HTMLElement | null;
         if (el.tagName.toUpperCase() === "INPUT") {
             // special case for the search input that has an access key
             // defined. We cannot set the overlay on the input itself,
@@ -275,10 +297,13 @@ function addHotkeyOverlays(activeElement: HTMLElement) {
             overlayParent = el;
         }
 
-        if (overlayParent.style.position !== "absolute") {
-            overlayParent.style.position = "relative";
+        // Make sure overlayParent exists and is an HTMLElement before accessing style
+        if (overlayParent instanceof HTMLElement) {
+            if (overlayParent.style.position !== "absolute") {
+                overlayParent.style.position = "relative";
+            }
+            overlayParent.appendChild(overlay);
         }
-        overlayParent.appendChild(overlay);
     }
     overlaysVisible = true;
 }
@@ -340,7 +365,9 @@ function registerHotkey(hotkey: string, callback: HotkeyCallback, options: Hotke
     // Due to the way elements are mounted in the DOM by Owl (bottom-to-top),
     // we need to wait the next micro task tick to set the context owner of the registration.
     Promise.resolve().then(() => {
-        registration.activeElement = activeElement;
+        // Ensure activeElement is HTMLElement or null
+        // This fixes the TypeScript error about Document not being assignable to HTMLElement
+        registration.activeElement = activeElement instanceof HTMLElement ? activeElement : document.body;
     });
 
     registrations.set(token, registration);

@@ -77,12 +77,12 @@ function MyComponent() {
   
   return (
     <div>
-      {/* The button will be clicked when 's' is pressed */}
+      {/* The button will be clicked when 'Alt+s' is pressed */}
       <button data-hotkey="s" onClick={() => console.log('Save clicked')}>
         Save
       </button>
       
-      {/* The button will be clicked when 'control+n' is pressed */}
+      {/* The button will be clicked when 'Alt+control+n' is pressed */}
       <button data-hotkey="control+n" onClick={() => console.log('New item')}>
         New Item
       </button>
@@ -134,7 +134,9 @@ Add this attribute to any clickable HTML element to make it respond to a hotkey:
 <button data-hotkey="control+b">Button B</button>
 ```
 
-When the specified hotkey is pressed, the element will be automatically clicked.
+When the specified hotkey is pressed with the Alt modifier key, the element will be automatically clicked. For example:
+- `data-hotkey="a"` responds to `Alt+a`
+- `data-hotkey="control+b"` responds to `Alt+Control+b`
 
 ### Options for useHotkey
 
@@ -174,7 +176,9 @@ The following options can be passed when using the `useHotkey` hook:
 
 ## Visual Overlay
 
-Press and hold the Alt key to display a visual overlay showing all available hotkeys in the current context.
+**Default Modifier Key: Alt**
+
+Press and hold the Alt key to display a visual overlay showing all available hotkeys in the current context. The Alt key is the default modifier used for activating hotkeys with the `data-hotkey` attribute.
 
 ## Considerations
 

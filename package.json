@@ -1,6 +1,6 @@
 {
   "name": "hot_key_service",
-  "version": "0.0.4",
+  "version": "1.0.0",
   "description": "Hotkey service for react",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

@@ -1,5 +1,5 @@
 // Export the core functionality
-export { onKeydown, removeHotkeyOverlays, add } from "./hotkey";
+export { onKeydown, removeHotkeyOverlays } from "./hotkey";
 export { useHotkey } from "./hotkey_hook";
 export type { HotkeyCallback, HotkeyOptions } from "./hotkey";
 

@@ -270,20 +270,21 @@ function addHotkeyOverlays(activeElement: HTMLElement | Document) {
         const overlay = document.createElement("div");
         overlay.classList.add(
             "o_web_hotkey_overlay",
-            "position-absolute",
-            "top-0",
-            "bottom-0",
-            "start-0",
-            "end-0",
-            "d-flex",
-            "justify-content-center",
-            "align-items-center",
-            "m-0",
-            "bg-black-50",
-            "h6"
-        );
+        ); 
+        overlay.style.position = "absolute";
+        overlay.style.top = "0";
+        overlay.style.bottom = "0";
+        overlay.style.left = "0";
+        overlay.style.right = "0";
+        overlay.style.display = "flex";
+        overlay.style.justifyContent = "center";
+        overlay.style.alignItems = "center";
+        overlay.style.margin = "0";
+        overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+        overlay.style.fontSize = "1rem";
+        
         const overlayKbd = document.createElement("kbd");
-        overlayKbd.className = "small";
+        overlayKbd.style.fontSize = "1rem";
         overlayKbd.appendChild(document.createTextNode(hotkey.toUpperCase()));
         overlay.appendChild(overlayKbd);
 

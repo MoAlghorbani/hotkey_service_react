@@ -29,7 +29,6 @@
     
     /* Output Configuration */
     "declaration": true,
-    "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src"
